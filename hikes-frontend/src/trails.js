@@ -5,144 +5,114 @@ const trails = [
     height: 2864,
     difficulty: "težka",
     climbing: true,
+    time: "8-10h",
+    timeHours: 9,
     huts: [
-      { name: "Koča pri Triglavskih jezerih", link: "https://www.pzs.si/koce.php?pid=31" },
-      { name: "Dom Planika pod Triglavom", link: "https://www.pzs.si/koce.php?pid=22" },
-      { name: "Triglavski dom na Kredarici", link: "https://www.pzs.si/koce.php?pid=21" },
+      { name: "Planika", link: "https://www.pzs.si/koce.php?pid=17" },
+      { name: "Kredarica", link: "https://www.pzs.si/koce.php?pid=18" },
+      { name: "Dom Valentina Staniča", link: "https://www.pzs.si/koce.php?pid=19" },
     ],
-    time: "6-8h",
-    timeHours: 7,
-    season: ["poletje", "zima"],
-    startingPoints: [
+    season: ["poletje", "celo leto"],
+    parking: [
       {
         name: "Krma",
-        transport: {
-          car: {
-            parking: { name: "Parkirišče Krma", price: "3€/dan", capacity: "70 vozil" },
-            timeFromLjubljana: "1h 40min",
-            costFromLjubljana: "~20€ gorivo + 6€ parkirnina",
-          },
-          bus: {
-            nearestStop: "Mojstrana",
-            timeToStart: "30min taxi ali 1h hoje",
-            price: "7€ iz Ljubljane do Mojstrane",
-          },
-          train: {
-            nearestStation: "Jesenice",
-            transfer: "bus Jesenice → Mojstrana + taxi/hoja",
-            price: "8€ vlak + 5€ bus",
-          },
-        },
+        type: "makadam",
+        price: "brezplačno",
+        gps: { lat: 46.3833, lon: 13.9333 },
       },
       {
-        name: "Rudno polje (Pokljuka)",
-        transport: {
-          car: {
-            parking: { name: "Rudno polje", price: "5€/dan", capacity: "100 vozil" },
-            timeFromLjubljana: "1h 30min",
-            costFromLjubljana: "~18€ gorivo + 5€ parkirnina",
-          },
-          bus: {
-            nearestStop: "Bled",
-            timeToStart: "30min taxi z Bleda",
-            price: "6€ bus Ljubljana → Bled",
-          },
-          train: {
-            nearestStation: "Jesenice",
-            transfer: "vlak Jesenice → Bled + taxi",
-            price: "8€ vlak + 5€ taxi/bus",
-          },
-        },
+        name: "Pokljuka",
+        type: "asfaltno parkirišče",
+        price: "5€/dan",
+        gps: { lat: 46.3421, lon: 13.9245 },
+      },
+    ],
+    transport: [
+      {
+        type: "avtobus",
+        from: "Ljubljana",
+        to: "Mojstrana",
+        price: "8€",
+        time: "2h",
+        link: "https://www.ap-ljubljana.si/",
+      },
+      {
+        type: "vlak",
+        from: "Ljubljana",
+        to: "Jesenice",
+        price: "7€",
+        time: "1.5h",
+        link: "https://potniski.sz.si/",
       },
     ],
   },
   {
-    name: "Šmarna gora",
+    name: "Šmarna Gora",
     mountainRange: "Pohorje",
     height: 669,
     difficulty: "lahka",
     climbing: false,
-    huts: [
-      { name: "Gostilna Ledinek", link: "https://www.smarna-gora.si/" }
-    ],
     time: "1h",
     timeHours: 1,
-    season: ["celo leto"],
-    startingPoints: [
-      {
-        name: "Tacen",
-        transport: {
-          car: {
-            parking: { name: "Parkirišče Tacen", price: "brezplačno", capacity: "50 vozil" },
-            timeFromLjubljana: "15min",
-            costFromLjubljana: "~2€ gorivo",
-          },
-          bus: {
-            nearestStop: "Tacen",
-            timeToStart: "5min hoje",
-            price: "1,3€ mestni avtobus",
-          },
-        },
-      },
-    ],
-  },
-  {
-    name: "Grintovec",
-    mountainRange: "Kamniško Savinjske Alpe",
-    height: 2558,
-    difficulty: "težka",
-    climbing: true,
     huts: [
-      { name: "Cožanova koča", link: "https://www.pzs.si/koce.php?pid=32" }
+      { name: "Gostilna na vrhu", link: "https://www.smarna-gora.si/" },
     ],
-    time: "5-6h",
-    timeHours: 6,
-    season: ["poletje"],
-    startingPoints: [
+    season: ["celo leto"],
+    parking: [
       {
-        name: "Kamniška Bistrica",
-        transport: {
-          car: {
-            parking: { name: "Izvir Kamniške Bistrice", price: "brezplačno", capacity: "80 vozil" },
-            timeFromLjubljana: "45min",
-            costFromLjubljana: "~6€ gorivo",
-          },
-          bus: {
-            nearestStop: "Kamniška Bistrica",
-            timeToStart: "0min – direktno",
-            price: "5€ iz Kamnika",
-          },
-        },
+        name: "Tacenski most",
+        type: "asfaltno parkirišče",
+        price: "brezplačno",
+        gps: { lat: 46.1247, lon: 14.4520 },
+      },
+    ],
+    transport: [
+      {
+        type: "avtobus",
+        from: "Ljubljana Center",
+        to: "Tacen",
+        price: "1.3€",
+        time: "25min",
+        link: "https://www.lpp.si/",
       },
     ],
   },
   {
-    name: "Stol",
-    mountainRange: "Karavanke",
-    height: 2236,
+    name: "Storžič",
+    mountainRange: "Kamniško Savinjske Alpe",
+    height: 2132,
     difficulty: "srednja",
     climbing: false,
-    huts: [
-      { name: "Prešernova koča na Stolu", link: "https://www.pzs.si/koce.php?pid=18" }
-    ],
-    time: "4-5h",
+    time: "5-6h",
     timeHours: 5,
-    season: ["poletje", "jesen"],
-    startingPoints: [
+    huts: [
+      { name: "Dom pod Storžičem", link: "https://www.pzs.si/koce.php?pid=45" },
+    ],
+    season: ["poletje", "celo leto"],
+    parking: [
       {
-        name: "Valvasorjev dom",
-        transport: {
-          car: {
-            parking: { name: "Parkirišče Valvasorjev dom", price: "3€/dan", capacity: "60 vozil" },
-            timeFromLjubljana: "1h 15min",
-            costFromLjubljana: "~15€ gorivo + parkirnina",
-          },
-          bus: {
-            nearestStop: "Žirovnica",
-            timeToStart: "1h hoje ali taxi",
-            price: "6€ Ljubljana → Žirovnica",
-          },
-        },
+        name: "Dom pod Storžičem parkirišče",
+        type: "asfaltno parkirišče",
+        price: "brezplačno",
+        gps: { lat: 46.3331, lon: 14.4215 },
+      },
+    ],
+    transport: [
+      {
+        type: "vlak",
+        from: "Ljubljana",
+        to: "Kranj",
+        price: "5€",
+        time: "40min",
+        link: "https://potniski.sz.si/",
+      },
+      {
+        type: "avtobus",
+        from: "Kranj",
+        to: "Trstenik",
+        price: "2€",
+        time: "20min",
+        link: "https://www.ap-ljubljana.si/",
       },
     ],
   },
