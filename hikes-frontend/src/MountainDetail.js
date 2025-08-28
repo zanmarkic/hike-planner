@@ -1,76 +1,27 @@
-import React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState } from "react";
+import { HikeWizard } from "../components/HikeWizard"; // dodamo, ko naredimo wizard
 
-function MountainDetail({ mountains }) {
-  const { id } = useParams();
-  const mountain = mountains.find((m) => m.id === parseInt(id));
-
-  if (!mountain) return <p>Vrh ni bil najden.</p>;
+export default function MountainDetails({ mountain }) {
+  const [showWizard, setShowWizard] = useState(false);
 
   return (
-    <div>
-      <h2>{mountain.name}</h2>
-      <p>Gorovje: {mountain.region}</p>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold">{mountain.name}</h1>
       <p>Višina: {mountain.height} m</p>
       <p>Težavnost: {mountain.difficulty}</p>
-      <p>Čas: {mountain.time}h</p>
-      <p>Sezona: {mountain.season.join(", ")}</p>
 
-      <h3>Koče</h3>
-      <ul>
-        {mountain.huts.length > 0 ? (
-          mountain.huts.map((h, i) => (
-            <li key={i}>
-              <a href={h.url} target="_blank" rel="noopener noreferrer">
-                {h.name}
-              </a>
-            </li>
-          ))
-        ) : (
-          <li>Ni koč</li>
-        )}
-      </ul>
+      {/* Gumb za začetek organizacije */}
+      <button
+        className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
+        onClick={() => setShowWizard(true)}
+      >
+        Pomagaj organizirati
+      </button>
 
-<h3>Parkirišča</h3>
-<ul>
-  {mountain.parkings.map((parking, index) => {
-    if (typeof parking === "string") {
-      return <li key={index}>{parking}</li>; // samo ime
-    } else {
-      return (
-        <li key={index}>
-          {parking.name}{" "}
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${parking.gps}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            📍
-          </a>
-        </li>
-      );
-    }
-  })}
-</ul>
-
-      <h3>Javni prevoz</h3>
-      <ul>
-        {mountain.transport.length > 0 ? (
-          mountain.transport.map((t, i) => (
-            <li key={i}>
-              <a href={t.url} target="_blank" rel="noopener noreferrer">
-                {t.name}
-              </a>
-            </li>
-          ))
-        ) : (
-          <li>Ni javnega prevoza</li>
-        )}
-      </ul>
-
-      <Link to="/">Nazaj</Link>
+      {/* Prikaži wizard */}
+      {showWizard && <HikeWizard />}
     </div>
+
+    
   );
 }
-
-export default MountainDetail;
