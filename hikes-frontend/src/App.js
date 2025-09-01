@@ -1,21 +1,25 @@
-import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+// src/App.js
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import MountainDetail from "./pages/MountainDetail";
 import OrganizeTour from "./pages/OrganizeTour";
 
-
-function App() {
+export default function App() {
   return (
-    <Router>
+    <BrowserRouter>
       <Routes>
+        {/* Prva stran s filtri in seznamom */}
         <Route path="/" element={<Home />} />
-        <Route path="/gora/:id" element={<MountainDetail />} />
+
+        {/* Detajl gore: /mountain/Triglav */}
         <Route path="/mountain/:name" element={<MountainDetail />} />
-        <Route path="/tour/:name" element={<OrganizeTour />} />
+
+        {/* Organizacija ture */}
+        <Route path="/organize" element={<OrganizeTour />} />
+
+        {/* Vse ostalo preusmeri na domov */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </Router>
+    </BrowserRouter>
   );
 }
-
-export default App;

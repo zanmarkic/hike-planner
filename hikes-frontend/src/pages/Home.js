@@ -63,18 +63,18 @@ export default function Home() {
       <Filters filters={filters} setFilters={setFilters} />
 
       {isAnyFilterSelected ? (
-        filteredMountains.length > 0 ? (
-          filteredMountains.map((mountain) => (
-            <div key={mountain.id}>
-              <Link to={`/gora/${mountain.id}`}>
-                <MountainCard mountain={mountain} />
-              </Link>
-            </div>
-          ))
-        ) : (
-          <p>Ni gora, ki bi ustrezale filtrom.</p>
-        )
-      ) : null}
+  filteredMountains.length > 0 ? (
+    filteredMountains.map((mountain) => (
+      <div key={mountain.id}>
+        <Link to={`/mountain/${encodeURIComponent(mountain.name)}`}>
+          <MountainCard mountain={mountain} />
+        </Link>
+      </div>
+    ))
+  ) : (
+    <p>Ni gora, ki bi ustrezale filtrom.</p>
+  )
+) : null}
     </div>
   );
 }
