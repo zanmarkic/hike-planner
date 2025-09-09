@@ -5,7 +5,7 @@ import mountains from "../data/mountains";
 
 export default function OrganizeTour() {
   const [sp] = useSearchParams();
-  const mountainName = sp.get("m") || "";  // iz /organize?m=Triglav
+  const mountainName = sp.get("m") || ""; // iz /organize?m=Triglav
 
   const mountain = useMemo(
     () => mountains.find((m) => m.name === mountainName),
@@ -21,11 +21,12 @@ export default function OrganizeTour() {
 
   const [form, setForm] = useState({
     people: "",
-    date: "",
+    dateFrom: "",
+    dateTo: "",
     sleep: "ne",
     hut: "",
     transport: "",
-    route: ""
+    route: "",
   });
 
   const suggestedRoutes = useMemo(() => {
@@ -38,7 +39,20 @@ export default function OrganizeTour() {
 
   const onChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value, ...(name === "sleep" && value === "ne" ? { hut: "" } : {}) }));
+
+    // če uporabnik spremeni sleep na "ne", počistimo hut
+    if (name === "sleep" && value === "ne") {
+      setForm((prev) => ({ ...prev, sleep: "ne", hut: "" }));
+      return;
+    }
+
+    // če uporabnik spremeni dateFrom in je dateTo prej, porinemo dateTo naprej
+    if (name === "dateFrom" && form.dateTo && value && value > form.dateTo) {
+      setForm((prev) => ({ ...prev, dateFrom: value, dateTo: value }));
+      return;
+    }
+
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const openMaps = (lat, lng, mode = "driving") => {
@@ -49,38 +63,48 @@ export default function OrganizeTour() {
     window.open(url.toString(), "_blank");
   };
 
+  const nights = useMemo(() => {
+    if (!form.dateFrom || !form.dateTo) return 0;
+    const from = new Date(form.dateFrom);
+    const to = new Date(form.dateTo);
+    const diff = (to - from) / (1000 * 60 * 60 * 24); // dnevi
+    return diff > 0 ? diff : 0;
+  }, [form.dateFrom, form.dateTo]);
+
   const submit = (e) => {
     e.preventDefault();
     if (!mountain) return alert("Izberi goro.");
 
-    // preprosta validacija
-    if (!form.people || !form.date || !form.transport) {
-      return alert("Prosimo, izpolni število ljudi, datum in prevoz.");
+    // validacija
+    if (!form.people || !form.dateFrom || !form.dateTo || !form.transport) {
+      return alert("Prosimo, izpolni število ljudi, datum OD/DO in prevoz.");
+    }
+    if (form.dateTo < form.dateFrom) {
+      return alert("Datum DO ne sme biti pred datumom OD.");
     }
     if (form.sleep === "da" && !form.hut) {
       return alert("Izberi kočo.");
     }
 
-    // “Rezervacije” (mock)
     const actions = [];
     if (form.sleep === "da") {
-      actions.push(`Rezervacija koče: ${form.hut} (fake)`);
+      actions.push(`Rezervacija koče: ${form.hut} (mock) – ${nights} noč(i).`);
     }
     if (form.transport === "javni") {
-      actions.push("Odpri ponudnike javnega prevoza (fake)");
+      actions.push("Odpri ponudnike javnega prevoza (mock)");
       window.open("https://www.ap-ljubljana.si", "_blank");
       window.open("https://potniski.sz.si", "_blank");
     }
 
     alert(
       `Tura potrjena!\n` +
-      `Gora: ${mountain.name}\n` +
-      `Ljudje: ${form.people}\n` +
-      `Datum: ${form.date}\n` +
-      `Spanje: ${form.sleep === "da" ? `DA (${form.hut})` : "NE"}\n` +
-      `Prevoz: ${form.transport}\n` +
-      (form.route ? `Pot: ${form.route}\n` : "") +
-      (actions.length ? `\nAkcije:\n- ${actions.join("\n- ")}` : "")
+        `Gora: ${mountain.name}\n` +
+        `Ljudje: ${form.people}\n` +
+        `Obdobje: ${form.dateFrom} → ${form.dateTo} (${nights} noč/i)\n` +
+        `Spanje: ${form.sleep === "da" ? `DA (${form.hut})` : "NE"}\n` +
+        `Prevoz: ${form.transport}\n` +
+        (form.route ? `Pot: ${form.route}\n` : "") +
+        (actions.length ? `\nAkcije:\n- ${actions.join("\n- ")}` : "")
     );
   };
 
@@ -97,7 +121,7 @@ export default function OrganizeTour() {
     <div style={{ padding: 20 }}>
       <h1>Organiziraj turo za {mountain.name}</h1>
 
-      <form onSubmit={submit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
+      <form onSubmit={submit} style={{ display: "grid", gap: 12, maxWidth: 520 }}>
         <label>
           Število ljudi:
           <input
@@ -110,14 +134,32 @@ export default function OrganizeTour() {
         </label>
 
         <label>
-          Datum:
+          Datum OD:
           <input
             type="date"
-            name="date"
-            value={form.date}
+            name="dateFrom"
+            value={form.dateFrom}
             onChange={onChange}
+            max={form.dateTo || undefined}
           />
         </label>
+
+        <label>
+          Datum DO:
+          <input
+            type="date"
+            name="dateTo"
+            value={form.dateTo}
+            onChange={onChange}
+            min={form.dateFrom || undefined}
+          />
+        </label>
+
+        {form.dateFrom && form.dateTo && (
+          <div style={{ fontSize: 14, color: "#555" }}>
+            {nights > 0 ? `Število nočitev: ${nights}` : "Ista noč (brez nočitve)"}
+          </div>
+        )}
 
         <label>
           Ali želite spati?
@@ -143,11 +185,7 @@ export default function OrganizeTour() {
 
         <label>
           Predlagane poti {form.hut ? `(koča: ${form.hut})` : "(vse)"}:
-          <select
-            name="route"
-            value={form.route}
-            onChange={onChange}
-          >
+          <select name="route" value={form.route} onChange={onChange}>
             <option value="">— izberi pot —</option>
             {suggestedRoutes.map((r) => (
               <option key={r.name} value={r.name}>
@@ -170,9 +208,7 @@ export default function OrganizeTour() {
         {form.route && (
           <>
             <div style={{ fontSize: 14, color: "#555" }}>
-              Izhodišče: {
-                (mountain.routes.find((r) => r.name === form.route)?.start.label)
-              }
+              Izhodišče: {mountain.routes.find((r) => r.name === form.route)?.start.label}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button

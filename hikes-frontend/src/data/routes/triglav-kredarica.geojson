@@ -1,0 +1,2 @@
+import kredarica from "../data/routes/triglav-kredarica.geojson";
+const routeCoords = kredarica.features[0].geometry.coordinates; // [lng,lat]
