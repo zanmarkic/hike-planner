@@ -57,6 +57,12 @@ export default function OrganizeTour() {
     route: "",
   });
 
+  // Start lokacija (za avto) + avto trasa
+  const [origin, setOrigin] = useState("Ljubljana");
+  const [originCoord, setOriginCoord] = useState(null);     // [lng, lat] geokodiran start
+  const [driveCoords, setDriveCoords] = useState([]);       // [[lng,lat], ...]
+  const [driveInfo, setDriveInfo] = useState(null);         // { distance_km, duration_min }
+
   // koče za dropdown (iz routes + fiksni nabor)
   const allHuts = useMemo(() => {
     const s = new Set();
@@ -90,7 +96,7 @@ export default function OrganizeTour() {
       return (mountain.routes || []).filter((r) => {
         const detected = routeHutsCache[r.name];
         if (Array.isArray(detected)) return detected.includes(form.hut);
-        return (r.huts || []).includes(form.hut); // fallback dokler sled ni naložena
+        return (r.huts || []).includes(form.hut);
       });
     }
     return mountain.routes || [];
@@ -115,7 +121,6 @@ export default function OrganizeTour() {
     fetch(file)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`GeoJSON not found: ${file}`))))
       .then((geo) => {
-        // izlušči koordinate iz Feature/FeatureCollection (LineString/MultiLineString)
         let coords = [];
         const pushLine = (g) => {
           if (!g) return;
@@ -135,7 +140,7 @@ export default function OrganizeTour() {
             const nearHuts = HUTS.filter((h) => {
               const pt = turf.point([h.lng, h.lat]);
               const snap = turf.nearestPointOnLine(line, pt, { units: "meters" });
-              return snap.properties.dist <= 300; // 300 m od sledi
+              return snap.properties.dist <= 300;
             }).map((h) => h.short);
             setRouteHutsCache((prev) => ({ ...prev, [selectedRoute.name]: nearHuts }));
           }
@@ -172,6 +177,40 @@ export default function OrganizeTour() {
     return [14.5, 46.05];
   }, [routeCoords, selectedRoute]);
 
+  // --- AVTO: geokodiranje + ruta (OSRM) ---
+  async function geocode(q) {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", q);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "1");
+    const res = await fetch(url, { headers: { "Accept-Language": "sl" } });
+    const arr = await res.json();
+    if (!arr?.length) throw new Error("Lokacije ni mogoče najti.");
+    return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+  }
+
+  async function fetchDriveRoute(from, to) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    const json = await res.json();
+    const r = json?.routes?.[0];
+    if (!r) throw new Error("Vožnje ni mogoče izračunati.");
+    return {
+      coords: r.geometry.coordinates,
+      distance_km: Math.round((r.distance / 1000) * 10) / 10,
+      duration_min: Math.round(r.duration / 60),
+    };
+  }
+
+  // počisti vožnjo, ko ni "avto"
+  useEffect(() => {
+    if (form.transport !== "avto") {
+      setDriveCoords([]);
+      setDriveInfo(null);
+      setOriginCoord(null);
+    }
+  }, [form.transport]);
+
   // ---------------------- RENDER ----------------------
   return (
     <div style={{ padding: 20 }}>
@@ -206,6 +245,9 @@ export default function OrganizeTour() {
               selectedRoute ? `Pot: ${selectedRoute.name}` : null,
               selectedRoute && routeHutsCache[selectedRoute.name]?.length
                 ? `Koče na poti: ${routeHutsCache[selectedRoute.name].join(", ")}`
+                : null,
+              driveInfo && form.transport === "avto"
+                ? `Vožnja: ~${driveInfo.distance_km} km, ~${driveInfo.duration_min} min (OSRM)`
                 : null,
             ].filter(Boolean).join("\n");
             alert(base);
@@ -268,7 +310,87 @@ export default function OrganizeTour() {
               </select>
             </label>
 
-            {/* Hitra navigacija */}
+            <label>
+              Prevoz:
+              <select name="transport" value={form.transport} onChange={onChange}>
+                <option value="">— izberi prevoz —</option>
+                <option value="avto">Avto</option>
+                <option value="javni">Javni prevoz</option>
+              </select>
+            </label>
+
+            {/* AVTO: start lokacija + izračun vožnje */}
+            {form.transport === "avto" && (
+              <>
+                <label>
+                  Start lokacija (avto):
+                  <input
+                    type="text"
+                    value={origin}
+                    onChange={(e) => setOrigin(e.target.value)}
+                    placeholder="npr. Ljubljana, Kranj …"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      if (!selectedRoute?.start || typeof selectedRoute.start.lat !== "number" || typeof selectedRoute.start.lng !== "number") {
+                        alert("Izberi pot (izhodišče).");
+                        return;
+                      }
+                      setDriveCoords([]);
+                      setDriveInfo(null);
+
+                      const from = await geocode(origin);
+                      setOriginCoord([from.lng, from.lat]); // <- shranimo modri “Start” marker
+
+                      const to = { lat: selectedRoute.start.lat, lng: selectedRoute.start.lng };
+                      const r = await fetchDriveRoute(from, to);
+                      setDriveCoords(Array.isArray(r.coords) ? r.coords : []);
+                      setDriveInfo({ distance_km: r.distance_km, duration_min: r.duration_min });
+                    } catch (e) {
+                      console.error(e);
+                      alert(e.message || "Napaka pri izračunu vožnje.");
+                    }
+                  }}
+                >
+                  Pokaži celoten načrt (avto + peš)
+                </button>
+                {driveInfo && (
+                  <div style={{ fontSize: 14, color: "#555" }}>
+                    Vožnja: ~{driveInfo.distance_km} km, ~{driveInfo.duration_min} min (OSRM).
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* JAVNI PREVOZ: hitre povezave */}
+            {form.transport === "javni" && selectedRoute?.start && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const g = new URL("https://www.google.com/maps/dir/");
+                    g.searchParams.set("api", "1");
+                    g.searchParams.set("origin", origin || "Ljubljana");
+                    g.searchParams.set("destination", `${selectedRoute.start.lat},${selectedRoute.start.lng}`);
+                    g.searchParams.set("travelmode", "transit");
+                    window.open(g.toString(), "_blank");
+                  }}
+                >
+                  Google Transit
+                </button>
+                <button type="button" onClick={() => window.open("https://www.ap-ljubljana.si", "_blank")}>
+                  Avtobusi (AP Ljubljana)
+                </button>
+                <button type="button" onClick={() => window.open("https://potniski.sz.si", "_blank")}>
+                  Vlaki (SŽ)
+                </button>
+              </div>
+            )}
+
+            {/* Hitra navigacija (le do izhodišča) */}
             {selectedRoute && (
               <>
                 <div style={{ fontSize: 14, color: "#555" }}>
@@ -294,15 +416,20 @@ export default function OrganizeTour() {
             <button type="submit">Potrdi rezervacijo</button>
           </form>
 
-          {/* 3D prikaz iz GeoJSON sledi */}
+          {/* 3D prikaz iz GeoJSON sledi + (po potrebi) avto linija */}
           {routeCoords.length > 1 && (
             <section style={{ marginTop: 24 }}>
               <h2 style={{ marginBottom: 8 }}>3D načrt poti</h2>
               <div style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
                 <Map3D
-                  apiKey="MlYisTqyVIMLyyNin19J"   // ali apiKey={MAP_KEY}
+                  apiKey={MAP_KEY}
                   center={mapCenter}
                   routeCoords={routeCoords}
+                  driveCoords={driveCoords}
+                  originCoord={originCoord}
+                  originLabel={origin || "Start"}
+                  startLabel={selectedRoute?.start?.label || "Izhodišče"}
+                  summitLabel={mountain?.name ? `${mountain.name} (vrh)` : "Vrh"}
                   height="420px"
                 />
               </div>
