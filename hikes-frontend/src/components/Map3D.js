@@ -6,15 +6,16 @@ import "maplibre-gl/dist/maplibre-gl.css";
 /**
  * Props:
  * - center: [lng, lat] | {lng,lat}
- * - routeCoords: Array<[lng,lat] | {lng,lat}>   // peš pot
- * - driveCoords: Array<[lng,lat] | {lng,lat}>   // avto pot (opcijsko)
- * - originCoord: [lng,lat] | {lng,lat}          // “Start” (npr. Ljubljana) – opcijsko
- * - originLabel?: string                        // label “Start”
- * - startLabel?: string                         // label izhodišče
- * - summitLabel?: string                        // label vrh
- * - apiKey?: string                             // MapTiler ključ (opcijsko)
- * - height?: string                             // npr. "420px"
- * - showProviderBadge?: boolean                 // prikaži “MapTiler ON/OFF” (privzeto true)
+ * - routeCoords: Array<[lng,lat] | {lng,lat}>
+ * - driveCoords: Array<[lng,lat] | {lng,lat}>
+ * - originCoord: [lng,lat] | {lng,lat}
+ * - originLabel?: string
+ * - startLabel?: string
+ * - summitLabel?: string
+ * - apiKey?: string
+ * - height?: string
+ * - showProviderBadge?: boolean
+ * - mapStyle?: string  // npr. "outdoor-v2", "topo-v2", "winter", "streets-v2", "hybrid" ali poln URL
  */
 export default function Map3D({
   center,
@@ -27,6 +28,7 @@ export default function Map3D({
   apiKey,
   height = "300px",
   showProviderBadge = true,
+  mapStyle = "outdoor-v2",
 }) {
   const mapRef = useRef(null);
   const mapEl = useRef(null);
@@ -34,7 +36,6 @@ export default function Map3D({
   const summitMarkerRef = useRef(null);
   const originMarkerRef = useRef(null);
 
-  // Varen ključ: props > Vite > CRA > ""
   const KEY =
     apiKey ||
     (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MAPTILER_KEY) ||
@@ -42,7 +43,6 @@ export default function Map3D({
     "";
   const HAS_KEY = !!KEY;
 
-  // ------- helpers -------
   const toArrayLngLat = (p) => {
     if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) return [p[0], p[1]];
     if (p && typeof p === "object") {
@@ -56,7 +56,6 @@ export default function Map3D({
   const filterCoords = (arr) => (Array.isArray(arr) ? arr.map(toArrayLngLat).filter(Boolean) : []);
   const collectAllCoords = (route, drive) => [...filterCoords(route), ...filterCoords(drive)];
 
-  // Marker helper – najprej setLngLat, nato addTo(map); podpira tudi label (popup)
   const upsertMarker = (markerRef, map, lngLat, color, label) => {
     const xy = toArrayLngLat(lngLat);
     if (!xy) {
@@ -82,14 +81,19 @@ export default function Map3D({
     }
   };
 
-  // ------- init map -------
+  // Sestavi style URL: če je poln URL, ga uporabi; sicer id -> MapTiler style
+  const makeStyleUrl = (styleOrUrl) => {
+    if (!HAS_KEY) return "https://demotiles.maplibre.org/style.json";
+    if (typeof styleOrUrl === "string" && /^https?:\/\//.test(styleOrUrl)) return styleOrUrl;
+    const styleId = styleOrUrl || "outdoor-v2";
+    return `https://api.maptiler.com/maps/${styleId}/style.json?key=${KEY}`;
+  };
+
+  // INIT
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return;
 
-    const styleUrl = HAS_KEY
-      ? `https://api.maptiler.com/maps/outdoor/style.json?key=${KEY}`
-      : "https://demotiles.maplibre.org/style.json";
-
+    const styleUrl = makeStyleUrl(mapStyle);
     const initCenter = toArrayLngLat(center) || [14.5, 46.05];
 
     const map = new maplibregl.Map({
@@ -127,7 +131,6 @@ export default function Map3D({
         });
       }
 
-      // Peš pot
       map.addSource("route", {
         type: "geojson",
         data: {
@@ -139,14 +142,9 @@ export default function Map3D({
         id: "route-line",
         type: "line",
         source: "route",
-        paint: {
-          "line-color": "#ff5500",
-          "line-width": 4,
-          "line-opacity": 0.95,
-        },
+        paint: { "line-color": "#ff5500", "line-width": 4, "line-opacity": 0.95 },
       });
 
-      // Avto pot
       map.addSource("drive", {
         type: "geojson",
         data: {
@@ -158,27 +156,19 @@ export default function Map3D({
         id: "drive-line",
         type: "line",
         source: "drive",
-        paint: {
-          "line-color": "#2b6cff",
-          "line-width": 3,
-          "line-dasharray": [2, 2],
-          "line-opacity": 0.9,
-        },
+        paint: { "line-color": "#2b6cff", "line-width": 3, "line-dasharray": [2, 2], "line-opacity": 0.9 },
       });
 
-      // Markerji: start + vrh (iz peš poti)
       const rc = filterCoords(routeCoords);
       const start = rc.length ? rc[0] : null;
       const summit = rc.length ? rc[rc.length - 1] : null;
       upsertMarker(startMarkerRef, map, start, "#2ab56f", startLabel || "Izhodišče");
       upsertMarker(summitMarkerRef, map, summit, "#ff8a00", summitLabel || "Vrh");
 
-      // Modri “Start” (npr. Ljubljana) – če ga nimamo, vzemi 1. točko avto linije
       const dc = filterCoords(driveCoords);
       const originPoint = toArrayLngLat(originCoord) || (dc.length ? dc[0] : null);
       upsertMarker(originMarkerRef, map, originPoint, "#1e90ff", originLabel || "Start");
 
-      // Začetni fit
       const all = collectAllCoords(routeCoords, driveCoords);
       if (all.length >= 2) {
         const b = new maplibregl.LngLatBounds();
@@ -201,9 +191,9 @@ export default function Map3D({
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [HAS_KEY, KEY]);
+  }, [mapStyle, KEY]);
 
-  // Posodobitev centra (če ni nobene sledi)
+  // UPDATE center if no lines
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -215,7 +205,7 @@ export default function Map3D({
     }
   }, [center, routeCoords, driveCoords]);
 
-  // Posodobitev peš poti + markerjev
+  // UPDATE routes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -231,7 +221,6 @@ export default function Map3D({
     upsertMarker(summitMarkerRef, map, summit, "#ff8a00", summitLabel || "Vrh");
   }, [routeCoords, startLabel, summitLabel]);
 
-  // Posodobitev avto poti
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -242,7 +231,6 @@ export default function Map3D({
     src.setData({ type: "Feature", geometry: { type: "LineString", coordinates: dcoords } });
   }, [driveCoords]);
 
-  // Posodobitev “Start” markerja
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -251,7 +239,6 @@ export default function Map3D({
     upsertMarker(originMarkerRef, map, originPoint, "#1e90ff", originLabel || "Start");
   }, [originCoord, originLabel, driveCoords]);
 
-  // Enoten viewport fit (da se animacije ne tepejo)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -264,7 +251,6 @@ export default function Map3D({
     }
   }, [routeCoords, driveCoords]);
 
-  // -------- badge: MapTiler ON/OFF ----------
   const badge = showProviderBadge ? (
     <div
       style={{

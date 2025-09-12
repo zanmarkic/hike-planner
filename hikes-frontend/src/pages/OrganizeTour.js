@@ -5,11 +5,62 @@ import * as turf from "@turf/turf";
 import mountains from "../data/mountains";
 import Map3D from "../components/Map3D";
 
-// Varen MapTiler ključ (Vite ali CRA)
-const MAP_KEY =
-  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MAPTILER_KEY) ||
-  (typeof process !== "undefined" && process?.env?.REACT_APP_MAPTILER_KEY) ||
-  "";
+// MapTiler ključ iz CRA (.env): REACT_APP_MAPTILER_KEY=...
+const MAP_KEY = process.env.REACT_APP_MAPTILER_KEY || "";
+
+// ------------------ PARKIRIŠČNI OVERRIDES (Triglav – 6 poti) ------------------
+// Ključ MORA natančno ustrezati `${mountain.name}::${route.name}`
+const DRIVE_OVERRIDES = {
+  // Krma -> Kovinarska koča / parkirišče v Krmi
+  "Triglav::Pot čez Kredarico": {
+    label: "Krma – parkirišče (Kovinarska koča)",
+    lat: 46.3857,
+    lng: 13.9429,
+  },
+
+  // Vrata -> Aljažev dom v Vratih (parkirišče)
+  "Triglav::Pot čez Planiko": {
+    label: "Aljažev dom v Vratih – parkirišče",
+    lat: 46.4332,
+    lng: 13.8484,
+  },
+
+  // Komarča -> Koča pri Savici (parkirišče)
+  "Triglav::Pot čez Komarčo": {
+    label: "Koča pri Savici – parkirišče",
+    lat: 46.2899,
+    lng: 13.8666,
+  },
+
+  // Pokljuka -> Rudno polje (parkirišče)
+  "Triglav::Pot s Pokljuke": {
+    label: "Rudno polje – parkirišče",
+    lat: 46.3605,
+    lng: 13.9413,
+  },
+
+  // Trenta -> Zadnjica (parkirišče)
+  "Triglav::Pot iz Trente": {
+    label: "Zadnjica (Trenta) – parkirišče",
+    lat: 46.3666,
+    lng: 13.7395,
+  },
+
+  // Vrata (če imaš ločeno pot “Pot iz Vrat”) -> isto parkirišče kot zgoraj
+  "Triglav::Pot iz Vrat": {
+    label: "Aljažev dom v Vratih – parkirišče",
+    lat: 46.4332,
+    lng: 13.8484,
+  },
+};
+
+// Najbližja "routable" (cestna) točka za podane koordinate – OSRM nearest
+async function snapToRoad(lng, lat) {
+  const res = await fetch(`https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}`);
+  const j = await res.json();
+  const loc = j?.waypoints?.[0]?.location; // [lng, lat]
+  return Array.isArray(loc) ? { lng: loc[0], lat: loc[1] } : { lng, lat };
+}
 
 // --- Koče okoli Triglava (osnovni nabor za zaznavo ob sledi) ---
 const HUTS = [
@@ -57,9 +108,20 @@ export default function OrganizeTour() {
     route: "",
   });
 
+  // Map style (dropdown)
+  const MAPTILER_STYLES = [
+    { id: "outdoor-v2", label: "Outdoor (planinski)" },
+    { id: "topo-v2", label: "Topo v2 (osnovni)" },
+    { id: "streets-v2", label: "Streets v2 (mesta)" },
+    { id: "bright-v2", label: "Bright v2" },
+    { id: "winter", label: "Winter (zimski)" },
+    { id: "hybrid", label: "Hybrid (satelit + labels)" },
+  ];
+  const [mapStyle, setMapStyle] = useState("outdoor-v2");
+
   // Start lokacija (za avto) + avto trasa
   const [origin, setOrigin] = useState("Ljubljana");
-  const [originCoord, setOriginCoord] = useState(null);     // [lng, lat] geokodiran start
+  const [originCoord, setOriginCoord] = useState(null);     // [lng, lat]
   const [driveCoords, setDriveCoords] = useState([]);       // [[lng,lat], ...]
   const [driveInfo, setDriveInfo] = useState(null);         // { distance_km, duration_min }
 
@@ -177,7 +239,7 @@ export default function OrganizeTour() {
     return [14.5, 46.05];
   }, [routeCoords, selectedRoute]);
 
-  // --- AVTO: geokodiranje + ruta (OSRM) ---
+  // --- AVTO: geokodiranje + OSRM routing ---
   async function geocode(q) {
     const url = new URL("https://nominatim.openstreetmap.org/search");
     url.searchParams.set("q", q);
@@ -189,20 +251,6 @@ export default function OrganizeTour() {
     return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
   }
 
-  async function fetchDriveRoute(from, to) {
-    const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const r = json?.routes?.[0];
-    if (!r) throw new Error("Vožnje ni mogoče izračunati.");
-    return {
-      coords: r.geometry.coordinates,
-      distance_km: Math.round((r.distance / 1000) * 10) / 10,
-      duration_min: Math.round(r.duration / 60),
-    };
-  }
-
-  // počisti vožnjo, ko ni "avto"
   useEffect(() => {
     if (form.transport !== "avto") {
       setDriveCoords([]);
@@ -217,7 +265,7 @@ export default function OrganizeTour() {
       {!mountain ? (
         <>
           <h1>Organiziraj turo</h1>
-          <p>Ni podatkov o hribu. Odpri iz podrobnosti gore (gumb “Organiziraj turo”).</p>
+        <p>Ni podatkov o hribu. Odpri iz podrobnosti gore (gumb “Organiziraj turo”).</p>
         </>
       ) : (
         <>
@@ -319,6 +367,16 @@ export default function OrganizeTour() {
               </select>
             </label>
 
+            {/* IZBOR MAP TILER SLOGA */}
+            <label>
+              Slog zemljevida:
+              <select value={mapStyle} onChange={(e) => setMapStyle(e.target.value)}>
+                {MAPTILER_STYLES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </label>
+
             {/* AVTO: start lokacija + izračun vožnje */}
             {form.transport === "avto" && (
               <>
@@ -335,20 +393,44 @@ export default function OrganizeTour() {
                   type="button"
                   onClick={async () => {
                     try {
-                      if (!selectedRoute?.start || typeof selectedRoute.start.lat !== "number" || typeof selectedRoute.start.lng !== "number") {
+                      if (
+                        !selectedRoute?.start ||
+                        typeof selectedRoute.start.lat !== "number" ||
+                        typeof selectedRoute.start.lng !== "number"
+                      ) {
                         alert("Izberi pot (izhodišče).");
                         return;
                       }
                       setDriveCoords([]);
                       setDriveInfo(null);
 
+                      // 1) iz geokodiranja dobimo origin (A)
                       const from = await geocode(origin);
-                      setOriginCoord([from.lng, from.lat]); // <- shranimo modri “Start” marker
+                      setOriginCoord([from.lng, from.lat]);
 
-                      const to = { lat: selectedRoute.start.lat, lng: selectedRoute.start.lng };
-                      const r = await fetchDriveRoute(from, to);
-                      setDriveCoords(Array.isArray(r.coords) ? r.coords : []);
-                      setDriveInfo({ distance_km: r.distance_km, duration_min: r.duration_min });
+                      // 2) cilj vožnje = override (parkirišče) ali start peš poti
+                      const key = `${mountain.name}::${selectedRoute.name}`;
+                      const driveTarget = DRIVE_OVERRIDES[key] || selectedRoute.start; // {lat,lng}
+
+                      // 3) “snap” obeh točk na cesto (stabilen routing)
+                      const A = await snapToRoad(from.lng, from.lat);
+                      const B = await snapToRoad(driveTarget.lng, driveTarget.lat);
+
+                      // 4) OSRM vožnja A->B (radiuses poveča toleranco za snap)
+                      const url =
+                        `https://router.project-osrm.org/route/v1/driving/` +
+                        `${A.lng},${A.lat};${B.lng},${B.lat}` +
+                        `?overview=full&geometries=geojson&radiuses=5000;5000`;
+                      const res = await fetch(url);
+                      const json = await res.json();
+                      const r = json?.routes?.[0];
+                      if (!r) throw new Error("Vožnje ni mogoče izračunati.");
+
+                      setDriveCoords(Array.isArray(r.geometry?.coordinates) ? r.geometry.coordinates : []);
+                      setDriveInfo({
+                        distance_km: Math.round((r.distance / 1000) * 10) / 10,
+                        duration_min: Math.round(r.duration / 60),
+                      });
                     } catch (e) {
                       console.error(e);
                       alert(e.message || "Napaka pri izračunu vožnje.");
@@ -431,6 +513,7 @@ export default function OrganizeTour() {
                   startLabel={selectedRoute?.start?.label || "Izhodišče"}
                   summitLabel={mountain?.name ? `${mountain.name} (vrh)` : "Vrh"}
                   height="420px"
+                  mapStyle={mapStyle}
                 />
               </div>
               {selectedRoute && routeHutsCache[selectedRoute.name]?.length ? (

@@ -1,0 +1,38 @@
+{
+  "triglav-komarca": {
+    "start": {
+      "lng": 13.802399697,
+      "lat": 46.289813572
+    }
+  },
+  "triglav-krma": {
+    "start": {
+      "lng": 13.9236678,
+      "lat": 46.4004569
+    }
+  },
+  "triglav-planika": {
+    "start": {
+      "lng": 13.9232338,
+      "lat": 46.3454506
+    }
+  },
+  "triglav-pokljuka": {
+    "start": {
+      "lng": 13.923233838,
+      "lat": 46.345450637
+    }
+  },
+  "triglav-trenta": {
+    "start": {
+      "lng": 13.758151345,
+      "lat": 46.382438539
+    }
+  },
+  "triglav-vrata": {
+    "start": {
+      "lng": 13.843458122,
+      "lat": 46.409402825
+    }
+  }
+}
