@@ -174,6 +174,9 @@ export default function OrganizeTour() {
 
   // slog zemljevida
   const [mapStyle, setMapStyle] = useState(MAP_STYLES[0].id);
+  // preklop 2D / 3D
+const [is3D, setIs3D] = useState(true);
+
 
   /* -------- poti & koče -------- */
   const allRoutes = useMemo(() => (mountain?.routes || []), [mountain]);
@@ -503,9 +506,20 @@ export default function OrganizeTour() {
             height="420px"
             mapStyle={mapStyle}
             parkingPoints={parkingList}
+              is3D={is3D}
           />
         </div>
       </section>
+<label>
+  3D pogled:
+  <input
+    type="checkbox"
+    checked={is3D}
+    onChange={(e) => setIs3D(e.target.checked)}
+    style={{ marginLeft: 8 }}
+  />
+</label>
+
 
       {/* Parkirišča seznam */}
       <section style={{ marginTop: 24 }}>
