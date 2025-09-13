@@ -1,283 +1,276 @@
-// src/components/Map3D.jsx
-import React, { useEffect, useRef } from "react";
+// src/components/Map3D.js
+import React, { useEffect, useMemo, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+/* ---------- helpers (hoisted) ---------- */
+function emptyFC() {
+  return { type: "FeatureCollection", features: [] };
+}
+function tilesUrl(styleId, apiKey) {
+  return `https://api.maptiler.com/maps/${styleId}/256/{z}/{x}/{y}.png?key=${apiKey}`;
+}
+
+// Barvni marker z emoji + labelom (za izhodišče, vrh, izvor)
+function makePinEl({ bg = "#111", fg = "#fff", emoji = "", text = "" }) {
+  if (!document.getElementById("pin-badge-style")) {
+    const css = document.createElement("style");
+    css.id = "pin-badge-style";
+    css.textContent = `
+      .pin-badge{display:inline-flex;align-items:center;gap:6px;
+        padding:6px 10px;border-radius:14px;font:600 12px/1 system-ui,Segoe UI,Roboto,Arial;
+        box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateY(-2px);}
+      .pin-emoji{font-size:14px;line-height:1}
+    `;
+    document.head.appendChild(css);
+  }
+  const el = document.createElement("div");
+  el.className = "pin-badge";
+  el.style.background = bg;
+  el.style.color = fg;
+  el.innerHTML = `${emoji ? `<span class="pin-emoji">${emoji}</span>` : ""}<span>${text}</span>`;
+  return el;
+}
+
 /**
  * Props:
- * - center: [lng, lat] | {lng,lat}
- * - routeCoords: Array<[lng,lat] | {lng,lat}>
- * - driveCoords: Array<[lng,lat] | {lng,lat}>
- * - originCoord: [lng,lat] | {lng,lat}
- * - originLabel?: string
- * - startLabel?: string
- * - summitLabel?: string
- * - apiKey?: string
- * - height?: string
- * - showProviderBadge?: boolean
- * - mapStyle?: string  // npr. "outdoor-v2", "topo-v2", "winter", "streets-v2", "hybrid" ali poln URL
+ * - apiKey, center, height, mapStyle
+ * - routeCoords, driveCoords (LineString coords)
+ * - originCoord, startLabel, originLabel, summitLabel
+ * - parkingPoints: [{lat,lng,name,fee,capacity,surface}]
  */
 export default function Map3D({
-  center,
-  routeCoords,
-  driveCoords,
-  originCoord,
-  originLabel,
-  startLabel,
-  summitLabel,
   apiKey,
-  height = "300px",
-  showProviderBadge = true,
-  mapStyle = "outdoor-v2",
+  center = [14.5, 46.05],
+  height = "420px",
+  mapStyle = "outdoor",
+  routeCoords = [],
+  driveCoords = [],
+  originCoord = null,
+  startLabel = "Izhodišče",
+  originLabel = "Start",
+  summitLabel = "Konec",
+  parkingPoints = [],
 }) {
   const mapRef = useRef(null);
-  const mapEl = useRef(null);
-  const startMarkerRef = useRef(null);
-  const summitMarkerRef = useRef(null);
-  const originMarkerRef = useRef(null);
+  const mapDivRef = useRef(null);
 
-  const KEY =
-    apiKey ||
-    (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MAPTILER_KEY) ||
-    (typeof process !== "undefined" && process?.env?.REACT_APP_MAPTILER_KEY) ||
-    "";
-  const HAS_KEY = !!KEY;
+  const initialTiles = useMemo(() => tilesUrl(mapStyle, apiKey), [apiKey, mapStyle]);
 
-  const toArrayLngLat = (p) => {
-    if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) return [p[0], p[1]];
-    if (p && typeof p === "object") {
-      const lng = Number.isFinite(p.lng) ? p.lng : Number.isFinite(p.lon) ? p.lon : undefined;
-      const lat = Number.isFinite(p.lat) ? p.lat : undefined;
-      if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
-    }
-    return null;
-  };
-  const isCoord = (p) => !!toArrayLngLat(p);
-  const filterCoords = (arr) => (Array.isArray(arr) ? arr.map(toArrayLngLat).filter(Boolean) : []);
-  const collectAllCoords = (route, drive) => [...filterCoords(route), ...filterCoords(drive)];
+  const baseStyle = useMemo(
+    () => ({
+      version: 8,
+      sources: {
+        basemap: {
+          type: "raster",
+          tiles: [initialTiles],
+          tileSize: 256,
+          attribution: "© MapTiler © OpenStreetMap contributors",
+        },
+        "route-line": { type: "geojson", data: emptyFC() },
+        "drive-line": { type: "geojson", data: emptyFC() },
+      },
+      layers: [
+        { id: "basemap", type: "raster", source: "basemap" },
+        { id: "route-line-casing", type: "line", source: "route-line",
+          paint: { "line-color": "#ffffff", "line-width": 8, "line-opacity": 0.95 } },
+        { id: "route-line-layer", type: "line", source: "route-line",
+          paint: { "line-color": "#1e90ff", "line-width": 5.5, "line-opacity": 1 } },
+        { id: "drive-line-casing", type: "line", source: "drive-line",
+          paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.98 } },
+        { id: "drive-line-layer", type: "line", source: "drive-line",
+          paint: { "line-color": "#7c3aed", "line-width": 6.5, "line-opacity": 1 } },
+      ],
+    }),
+    [initialTiles]
+  );
 
-  const upsertMarker = (markerRef, map, lngLat, color, label) => {
-    const xy = toArrayLngLat(lngLat);
-    if (!xy) {
-      if (markerRef.current) {
-        markerRef.current.remove();
-        markerRef.current = null;
-      }
-      return;
+  const markersRef = useRef({ start: null, end: null, origin: null, parking: [] });
+
+  const clearMarkers = (which = "all") => {
+    const m = markersRef.current;
+    const rm = (x) => x && x.remove();
+    if (which === "all" || which === "main") {
+      rm(m.start); rm(m.end); rm(m.origin);
+      m.start = m.end = m.origin = null;
     }
-    if (!markerRef.current) {
-      const m = new maplibregl.Marker({ color });
-      m.setLngLat(xy).addTo(map);
-      if (label) {
-        const pop = new maplibregl.Popup({ offset: 10 }).setText(label);
-        m.setPopup(pop);
-      }
-      markerRef.current = m;
-      return;
-    }
-    markerRef.current.setLngLat(xy);
-    if (label && !markerRef.current.getPopup()) {
-      markerRef.current.setPopup(new maplibregl.Popup({ offset: 10 }).setText(label));
+    if (which === "all" || which === "parking") {
+      m.parking.forEach(rm);
+      m.parking = [];
     }
   };
 
-  // Sestavi style URL: če je poln URL, ga uporabi; sicer id -> MapTiler style
-  const makeStyleUrl = (styleOrUrl) => {
-    if (!HAS_KEY) return "https://demotiles.maplibre.org/style.json";
-    if (typeof styleOrUrl === "string" && /^https?:\/\//.test(styleOrUrl)) return styleOrUrl;
-    const styleId = styleOrUrl || "outdoor-v2";
-    return `https://api.maptiler.com/maps/${styleId}/style.json?key=${KEY}`;
+  const setLineData = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const route = map.getSource("route-line");
+    const drive = map.getSource("drive-line");
+
+    if (route) {
+      route.setData(
+        routeCoords?.length
+          ? { type: "FeatureCollection",
+              features: [{ type: "Feature", geometry: { type: "LineString", coordinates: routeCoords }, properties: {} }] }
+          : emptyFC()
+      );
+    }
+    if (drive) {
+      drive.setData(
+        driveCoords?.length
+          ? { type: "FeatureCollection",
+              features: [{ type: "Feature", geometry: { type: "LineString", coordinates: driveCoords }, properties: {} }] }
+          : emptyFC()
+      );
+    }
   };
 
-  // INIT
+  const fitToRoute = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (routeCoords?.length) {
+      const lngs = routeCoords.map((c) => c[0]);
+      const lats = routeCoords.map((c) => c[1]);
+      const b = [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]];
+      try { map.fitBounds(b, { padding: 56, duration: 600 }); } catch {}
+    } else {
+      try { map.easeTo({ center, zoom: 9, duration: 400 }); } catch {}
+    }
+  };
+
+  // --- različni markerji (izhodišče/vrh/izvor) ---
+  const placeMainMarkers = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    clearMarkers("main");
+
+    if (routeCoords?.length) {
+      const startLL = { lng: routeCoords[0][0], lat: routeCoords[0][1] };
+      const endLL   = { lng: routeCoords.at(-1)[0], lat: routeCoords.at(-1)[1] };
+
+      const trailheadEl = makePinEl({ bg: "#ef4444", emoji: "🚩", text: startLabel || "Izhodišče" });
+      markersRef.current.start = new maplibregl.Marker({ element: trailheadEl })
+        .setLngLat(startLL).addTo(map);
+
+      const summitEl = makePinEl({ bg: "#22c55e", emoji: "⛰️", text: summitLabel || "Vrh" });
+      markersRef.current.end = new maplibregl.Marker({ element: summitEl })
+        .setLngLat(endLL).addTo(map);
+    }
+
+    if (originCoord?.lat && originCoord?.lng) {
+      const originEl = makePinEl({ bg: "#a855f7", emoji: "🏠", text: originLabel || "Start" });
+      markersRef.current.origin = new maplibregl.Marker({ element: originEl })
+        .setLngLat({ lng: originCoord.lng, lat: originCoord.lat })
+        .addTo(map);
+    }
+  };
+
+  const placeParkingMarkers = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    clearMarkers("parking");
+    if (!Array.isArray(parkingPoints) || parkingPoints.length === 0) return;
+
+    let css = document.getElementById("p-badge-style");
+    if (!css) {
+      css = document.createElement("style");
+      css.id = "p-badge-style";
+      css.textContent = `.p-badge{width:26px;height:26px;border-radius:50%;
+        background:#fff;border:2px solid #2b6cb0;color:#2b6cb0;
+        display:flex;align-items:center;justify-content:center;
+        font:700 14px/26px system-ui,Segoe UI,Roboto,Arial;
+        box-shadow:0 1px 4px rgba(0,0,0,.25);}`;
+      document.head.appendChild(css);
+    }
+
+    markersRef.current.parking = parkingPoints
+      .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
+      .map((p) => {
+        const el = document.createElement("div");
+        el.className = "p-badge";
+        el.textContent = "P";
+        return new maplibregl.Marker({ element: el })
+          .setLngLat({ lng: p.lng, lat: p.lat })
+          .setPopup(
+            new maplibregl.Popup({ offset: 12 }).setHTML(`
+              <div style="min-width:180px">
+                <strong>${p.name || "Parkirišče"}</strong><br/>
+                <small>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small><br/>
+                ${p.capacity ? `🅿️ ${p.capacity}<br/>` : ""}
+                ${p.fee ? `💶 ${p.fee}<br/>` : ""}
+                ${p.surface ? `🧱 ${p.surface}<br/>` : ""}
+                <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=driving" target="_blank" rel="noreferrer">
+                  Navigiraj do parkirišča 🚗
+                </a>
+              </div>
+            `)
+          )
+          .addTo(map);
+      });
+  };
+
+  /* ---------- lifecycle ---------- */
   useEffect(() => {
-    if (!mapEl.current || mapRef.current) return;
-
-    const styleUrl = makeStyleUrl(mapStyle);
-    const initCenter = toArrayLngLat(center) || [14.5, 46.05];
+    if (!mapDivRef.current) return;
 
     const map = new maplibregl.Map({
-      container: mapEl.current,
-      style: styleUrl,
-      center: initCenter,
-      zoom: 12,
-      pitch: 60,
-      bearing: -10,
+      container: mapDivRef.current,
+      style: baseStyle,
+      center,
+      zoom: 9,
+      pitch: 58,
+      bearing: 0,
       antialias: true,
     });
-    mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
     map.on("load", () => {
-      if (HAS_KEY) {
-        map.addSource("terrain-dem", {
-          type: "raster-dem",
-          tiles: [
-            `https://api.maptiler.com/tiles/terrain-rgb/{z}/{x}/{y}.png?key=${KEY}`,
-          ],
-          tileSize: 256,
-          maxzoom: 14,
-          encoding: "mapbox",
-        });
-        map.setTerrain({ source: "terrain-dem", exaggeration: 1.3 });
-        map.addLayer({
-          id: "sky",
-          type: "sky",
-          paint: {
-            "sky-type": "atmosphere",
-            "sky-atmosphere-sun-intensity": 15,
-          },
-        });
-      }
-
-      map.addSource("route", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: filterCoords(routeCoords) },
-        },
-      });
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        paint: { "line-color": "#ff5500", "line-width": 4, "line-opacity": 0.95 },
-      });
-
-      map.addSource("drive", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: filterCoords(driveCoords) },
-        },
-      });
-      map.addLayer({
-        id: "drive-line",
-        type: "line",
-        source: "drive",
-        paint: { "line-color": "#2b6cff", "line-width": 3, "line-dasharray": [2, 2], "line-opacity": 0.9 },
-      });
-
-      const rc = filterCoords(routeCoords);
-      const start = rc.length ? rc[0] : null;
-      const summit = rc.length ? rc[rc.length - 1] : null;
-      upsertMarker(startMarkerRef, map, start, "#2ab56f", startLabel || "Izhodišče");
-      upsertMarker(summitMarkerRef, map, summit, "#ff8a00", summitLabel || "Vrh");
-
-      const dc = filterCoords(driveCoords);
-      const originPoint = toArrayLngLat(originCoord) || (dc.length ? dc[0] : null);
-      upsertMarker(originMarkerRef, map, originPoint, "#1e90ff", originLabel || "Start");
-
-      const all = collectAllCoords(routeCoords, driveCoords);
-      if (all.length >= 2) {
-        const b = new maplibregl.LngLatBounds();
-        all.forEach((c) => b.extend(c));
-        map.stop();
-        map.fitBounds(b, { padding: 60, duration: 900 });
-      } else if (isCoord(center)) {
-        map.setCenter(toArrayLngLat(center));
-      }
+      setLineData();
+      placeMainMarkers();
+      placeParkingMarkers();
+      fitToRoute();
     });
 
+    mapRef.current = map;
+
     return () => {
-      startMarkerRef.current?.remove();
-      summitMarkerRef.current?.remove();
-      originMarkerRef.current?.remove();
-      startMarkerRef.current = null;
-      summitMarkerRef.current = null;
-      originMarkerRef.current = null;
+      // počisti
+      try { clearMarkers("all"); } catch {}
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapStyle, KEY]);
+  }, []);
 
-  // UPDATE center if no lines
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const hasRoute = filterCoords(routeCoords).length >= 2;
-    const hasDrive = filterCoords(driveCoords).length >= 2;
-    const c = toArrayLngLat(center);
-    if (!hasRoute && !hasDrive && c) {
-      map.easeTo({ center: c, duration: 400 });
+
+    const swapTiles = () => {
+      try {
+        if (map.getLayer("basemap")) map.removeLayer("basemap");
+        if (map.getSource("basemap")) map.removeSource("basemap");
+      } catch {}
+      map.addSource("basemap", {
+        type: "raster",
+        tiles: [tilesUrl(mapStyle, apiKey)],
+        tileSize: 256,
+        attribution: "© MapTiler © OpenStreetMap contributors",
+      });
+      map.addLayer({ id: "basemap", type: "raster", source: "basemap" }, "route-line-casing");
+    };
+
+    if (map.isStyleLoaded && map.isStyleLoaded()) {
+      swapTiles();
+    } else {
+      map.once("load", swapTiles);
     }
-  }, [center, routeCoords, driveCoords]);
+  }, [mapStyle, apiKey]);
 
-  // UPDATE routes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const src = map.getSource("route");
-    if (!src) return;
+  useEffect(() => { setLineData(); fitToRoute(); }, [routeCoords]);
+  useEffect(() => { setLineData(); }, [driveCoords]);
+  useEffect(() => { placeMainMarkers(); }, [routeCoords, originCoord, startLabel, originLabel, summitLabel]);
+  useEffect(() => { placeParkingMarkers(); }, [parkingPoints]);
 
-    const coords = filterCoords(routeCoords);
-    src.setData({ type: "Feature", geometry: { type: "LineString", coordinates: coords } });
-
-    const start = coords.length ? coords[0] : null;
-    const summit = coords.length ? coords[coords.length - 1] : null;
-    upsertMarker(startMarkerRef, map, start, "#2ab56f", startLabel || "Izhodišče");
-    upsertMarker(summitMarkerRef, map, summit, "#ff8a00", summitLabel || "Vrh");
-  }, [routeCoords, startLabel, summitLabel]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const src = map.getSource("drive");
-    if (!src) return;
-
-    const dcoords = filterCoords(driveCoords);
-    src.setData({ type: "Feature", geometry: { type: "LineString", coordinates: dcoords } });
-  }, [driveCoords]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const dc = filterCoords(driveCoords);
-    const originPoint = toArrayLngLat(originCoord) || (dc.length ? dc[0] : null);
-    upsertMarker(originMarkerRef, map, originPoint, "#1e90ff", originLabel || "Start");
-  }, [originCoord, originLabel, driveCoords]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const all = collectAllCoords(routeCoords, driveCoords);
-    if (all.length >= 2) {
-      const b = new maplibregl.LngLatBounds();
-      all.forEach((c) => b.extend(c));
-      map.stop();
-      map.fitBounds(b, { padding: 60, duration: 600 });
-    }
-  }, [routeCoords, driveCoords]);
-
-  const badge = showProviderBadge ? (
-    <div
-      style={{
-        position: "absolute",
-        right: 8,
-        bottom: 8,
-        background: "rgba(255,255,255,0.9)",
-        border: "1px solid #ddd",
-        borderRadius: 8,
-        padding: "4px 8px",
-        fontSize: 12,
-        lineHeight: 1,
-        color: HAS_KEY ? "#15803d" : "#4b5563",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-        userSelect: "none",
-        pointerEvents: "none",
-      }}
-      title={HAS_KEY ? "MapTiler ključ zaznan – 3D teren aktiven" : "Brez MapTiler ključa – demo slog"}
-    >
-      {HAS_KEY ? "MapTiler ON" : "MapTiler OFF"}
-    </div>
-  ) : null;
-
-  return (
-    <div style={{ width: "100%", height, position: "relative" }}>
-      <div ref={mapEl} style={{ width: "100%", height: "100%" }} />
-      {badge}
-    </div>
-  );
+  return <div ref={mapDivRef} style={{ width: "100%", height }} />;
 }

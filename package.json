@@ -13,11 +13,12 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-  "start": "cross-env PORT=3001 react-scripts start",
-  "build": "react-scripts build",
-  "test": "react-scripts test",
-  "eject": "react-scripts eject"
-},
+    "start": "cross-env PORT=3000 react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "build:parking": "node scripts/build-parking.js"
+  },
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -35,5 +36,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "cross-env": "^10.0.0"
   }
 }

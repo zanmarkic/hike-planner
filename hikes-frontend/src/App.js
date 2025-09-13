@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import MountainDetail from "./pages/MountainDetail";
 import OrganizeTour from "./pages/OrganizeTour";
+import "./App.css";
 
 export default function App() {
   return (
