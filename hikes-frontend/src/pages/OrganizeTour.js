@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import mountains from "../data/mountains";
 import Map3D from "../components/Map3D";
+import ElevationProfile from "../components/ElevationProfile";
+
 
 /* ---------------- helpers ---------------- */
 function slugify(s) {
@@ -508,6 +510,19 @@ const [is3D, setIs3D] = useState(true);
             parkingPoints={parkingList}
               is3D={is3D}
           />
+{routeCoords.length > 1 && (
+  <div style={{ marginTop: 16 }}>
+    <ElevationProfile
+      coords={routeCoords}
+      medianWindow={9}
+      averageWindow={13}
+      deadband={3}
+      summitOverride={mountain?.elevation}   // npr. 2864 za Triglav
+    />
+  </div>
+)}
+
+
         </div>
       </section>
 <label>
